@@ -1,0 +1,857 @@
+SECTION .data
+message:TIMES 255 db 0
+lenX:dd 1 ;4byte
+lenY:dd 1 ;4byte
+prompt:db "Input: " ,0h
+debug db 'Invalid', 0
+Xarr: TIMES 255 dd 0 ; one byte each
+Yarr: TIMES 255 dd 0 ;Xarr本身的地址就是数组开头，而Xend中存放的地址是数组尾，它是指针
+Xend:dd 0 ;
+Yend:dd 0 ;存放X,Y的结尾指针
+resultArr:TIMES 255 dd 0 ;存放倒置的result
+result:TIMES 255 dd 0 ;结果的数组（正向）
+lenR:dd 5 ;4byte ;暂存结果的长度（有可以能比结果长度大一位）
+zero :dd 0
+enter:dd 0xa ;换行符
+arrPointer:dd 0 ;用于遍历数组 
+ret: dd 0 ;进位符，1为有进位，0为无进位
+array:dd 12,4,16,1,0 ;used in debug
+length:dd 5 
+flag :dd 9
+round:dd 0 ;用于暂存地址
+Q:dd 'Q'
+Xback:TIMES 255 dd 0 
+Yback:TIMES 255 dd 0 ;这两个数组是XY数组的倒放
+ifMul :dd 0 ;记录是否是乘法，若是，该位为1
+
+
+SECTION .bss
+ ;存放输入时的字符串
+msgX:resb 255 
+msgY:resb 255 
+num:resd 1; used in debug
+i:resd 1; used in debug
+j:resd 1; used in debug
+
+SECTION .text
+global  _start
+
+
+setIfMul:
+    mov dword[ifMul],1
+calXLen:
+    mov ebx,message
+    mov ecx,eax
+    sub eax,ebx
+    mov [lenX],eax  
+    mov eax,ecx  ;还原eax
+    jmp nextcharY ;不回原循环了，跳到循环Y的部分
+;********************** 打印数组的函数
+printArr:
+    ;打印一个数组（数组每一位是4字节），长度放在length中，数组起始放在arrPointer中
+    ;mov dword[length],5
+    mov dword[i],0
+loop:
+    mov eax,[length]
+    sub eax,[i]
+    cmp eax,0
+    jle endLoop
+    mov ecx,[i]
+    mov edx,[arrPointer]
+    mov eax,[edx+4*ecx]
+    add eax,'0'
+    mov [num],eax
+    mov ecx,num
+    mov eax,4
+    mov ebx,1
+    mov edx,4  ;注意，这里一次性要输出四字节(数组的一位))
+    int 80h
+    mov eax,[i]
+    inc eax
+    mov [i],eax  ;自增1
+    jmp loop
+endLoop:
+    ret
+;--------------------------------
+;***********************************处理错误输入
+solveError:
+    mov eax,4
+    mov ebx,1
+    mov ecx,debug
+    mov edx,7
+    int 80h
+
+    call printEnter
+    jmp input
+
+;-----------------------------------------
+;***************************************** 清空数组(4位一组的)
+;参数： 把数组头的地址放在arrPointer中
+    
+clearArr:
+    mov dword[i],0
+loopClear:
+    mov eax,[i]
+    cmp eax,255
+    jge endClear
+
+    mov eax,[arrPointer]
+    mov ebx,[i]
+    shl ebx,2
+    add eax,ebx
+    mov dword[eax],0
+
+    mov eax,[i]
+    inc eax
+    mov [i],eax
+    jmp loopClear
+
+endClear:
+    ret
+
+
+
+;----------------------------------------------
+
+;***************************************** 清空message
+    
+clearMessage:
+    mov dword[i],0
+loopClearMessage:
+    mov eax,[i]
+    cmp eax,255
+    jge endClearMessage
+
+    mov eax,message
+    mov ebx,[i]
+    add eax,ebx
+    mov dword[eax],0
+
+    mov eax,[i]
+    inc eax
+    mov [i],eax
+    jmp loopClearMessage
+
+endClearMessage:
+    ret
+
+;********************* 非函数，跳转语句
+resolveX:
+;这里要判断一下是否也比Y长，若长，则跳出大循环
+    mov ebx,[lenY]
+    sub ebx,[i]
+    cmp ebx,0
+    jl endTraverse
+    mov ebx, zero
+    jmp resolveXback
+
+resolveY:
+    mov ecx, zero
+    jmp resolveYback
+
+;------------------------------
+
+;************************* 进位时用的，仅用于加法
+addCarry:
+    mov dword[ret],1 ;把进位符设为1
+    sub ecx,10
+    mov ebx,[arrPointer]
+    mov [ebx],ecx
+    jmp returnCarry
+
+addOne:
+    inc ecx
+    mov eax,[arrPointer]
+    mov [eax],ecx
+    mov dword[ret],0 ;进位符置零
+    jmp returnAdd
+;-------------------------------
+;********************** 翻转字符串函数
+turnAround:
+;参数：eax指向数组头，length里存长度，round存空地开头
+    mov dword[i],0
+    mov ebx,[length]
+    dec ebx
+    shl ebx,2  ;*4
+    add eax,ebx  ;eax指向数组末尾
+.loop:
+    mov ebx,[length]
+    cmp ebx,[i]
+    jle endl
+
+    mov ebx,[eax]  ;存放当前要移的变量
+
+    mov edx,[round]
+    mov ecx,[i]
+    mov [edx+4*ecx],ebx
+
+    sub eax,4 ;回退一格 
+
+    mov ebx,[i]
+    inc ebx
+    mov [i],ebx ;自增i
+    jmp .loop
+endl:
+    ret
+
+;-------------------------------------- 
+
+;**************************************************处理只有一位的结果
+resolveOneBitResult:
+    mov eax,4
+    mov ebx,1
+    mov ecx,result
+    mov edx,4
+    int 80h
+    jmp end
+
+;-------------------------------------------------------------
+
+;************************************** 输出换行键
+printEnter:
+    mov eax,4
+    mov ebx,1
+    mov ecx,enter
+    mov edx,4
+    int 80h
+    ret
+    
+
+;----------------------------------------------
+
+;************************************************处理前导0(即把输出的起始向后移动一格),并把结果的位数减1，仅用于加法
+;-------------------------------
+
+;************************** 乘法进位时用的
+addNum:
+;当有进位时，加到该位上
+    add ecx,[ret]
+    mov eax,[arrPointer]
+    mov [eax],ecx
+    mov dword[ret],0 ;进位符置零
+    jmp returnAddMul
+;--------------------------------------
+
+
+;************************************************ 处理进位（对于乘法有大于1进位的情况）
+;参数：把该位的数放在ecx中，arrayPointer中有该处的指针(eax空闲)
+solveCarryInMul:
+    mov dword[ret],0 
+L1:
+    cmp ecx,9
+    jle endL1
+    sub ecx,10
+    mov eax,[arrPointer] ;原数组处减10
+    mov [eax],ecx
+
+    mov eax,[ret] 
+    inc eax
+    mov [ret],eax ;进位加1
+    jmp L1
+endL1:
+    jmp returnCarryMul
+;---------------------------------------------------
+
+
+_start:
+
+input:
+;***************************************************
+    
+    call clearMessage
+    
+    mov eax,result
+    mov [arrPointer],eax
+    call clearArr
+
+
+    mov eax,resultArr
+    mov [arrPointer],eax
+    call clearArr
+
+    mov eax,Xarr
+    mov [arrPointer],eax
+    call clearArr
+
+    mov eax,Yarr
+    mov [arrPointer],eax
+    call clearArr
+
+    mov eax,Xback
+    mov [arrPointer],eax
+    call clearArr
+
+    mov eax,Yback
+    mov [arrPointer],eax
+    call clearArr
+
+    mov dword[ifMul],0
+
+;--------------------------------------------------
+
+;***********************************************step1:处理输入，将两个数字分别方别两个数组中（每个数字占4byte），并存入两个数字的长度
+
+;prompt for X
+    mov eax,4
+    mov ebx,1
+    mov ecx,prompt
+    mov edx,7
+    int 80h
+
+;这里要一个字符一个字符的输入，否则不知道什么时候结束 唉……
+    mov dword[i],0
+loopInput:  ;注意！！！ 结尾一定要加一个0xa ，否则之后处理中不知道字符串什么时候结束
+    mov eax,message
+    add eax,[i] ;计算出下一个字符放在哪里
+    mov [num],eax
+    mov eax,3
+    mov ebx,0
+    mov ecx,[num]
+    mov edx,1
+    int 80h
+
+    ;如果输入的是回车，则结束循环
+    mov eax,[num] ;此时eax中是该字符的地址
+    mov ebx,[eax]
+    cmp ebx,0xa
+    je endLoopInput
+
+    mov eax,[i]
+    inc eax
+    mov [i],eax
+    jmp loopInput
+
+endLoopInput:
+
+    mov ebx, message        ; move the address of our message string into EBX
+    mov eax, ebx        ; move the address in EBX into EAX as well (Both now point to the same segment in memory)
+
+ ;判断字符串是否是“q”，若是，结束程序
+    cmp byte[eax],'q'
+    je end
+
+    
+    mov edx,Xarr ;edx中存放数组的首地址
+    mov ecx,0 ;用于遍历数组
+;遍历第一个数的
+nextcharX:
+    cmp     byte[eax], '/'
+    jz      solveError
+    cmp     byte[eax], '+'
+    jz      calXLen
+    cmp     byte[eax], '*'
+    jz      setIfMul
+    mov     ebx,0 ;清空ebx
+    mov     bl,[eax]  ;放到ebx的低八位中
+    sub     ebx,'0'
+    mov     [edx+4*ecx],ebx
+    inc     ecx
+    inc     eax          ; 
+    jmp     nextcharX        
+
+
+nextcharY:
+    mov edx,Yarr ;edx中存放数组的
+    mov ecx,0 ;用于遍历数组
+    inc eax
+nextcharYSecond:
+    cmp     byte[eax], 0xa   ; 到回车结束遍历
+    jz      calculateLen        ; 结束字符串遍历
+    xor     ebx,ebx 
+    mov     bl,[eax]
+    sub     ebx,'0'
+    mov     [edx+4*ecx],ebx
+    inc     ecx
+    inc     eax            ; increment the address in EAX by one byte (if the zero flagged has NOT been set)
+    jmp    nextcharYSecond        ; jump to the point in the code labeled 'nextchar'
+ 
+calculateLen:
+    mov     ebx,message
+    sub     eax, ebx      
+    
+      
+    
+    
+    
+;calculate the length of Y
+    mov [lenY],eax
+    mov edx,[lenX]
+    sub eax,edx
+    dec eax
+    mov [lenY],eax
+;*********************************************** end of step1 
+
+;************* debug step1
+;print  length of Yarr
+    ;mov eax,[lenY]
+    ;mov [length],eax
+    ;mov eax,Yarr
+    ;mov [arrPointer],eax
+    ;call printArr
+
+;print length of Y
+
+    ;mov eax,[lenX]
+    ;add eax,'0'
+    ;mov [num],eax
+    ;mov ecx,num
+    ;mov eax,4
+    ;mov ebx,1
+    ;mov edx,4
+    ;int 80h
+  
+    ;mov eax,[lenY]
+    ;add eax,'0'
+    ;mov [num],eax
+    ;mov ecx,num
+    ;mov eax,4
+    ;mov ebx,1
+    ;mov edx,4
+    ;int 80h
+
+    ;mov eax,[lenX]
+    ;mov [length],eax
+    ;mov eax,Xarr
+    ;mov [arrPointer],eax
+   ; call printArr
+
+;------------------------------------------------------------
+;*****************************处理乘法跳转
+    mov eax,[ifMul]
+    cmp eax,1
+    je MultiPart
+
+;***************************************************************step2 add 
+;**** 1.先把两个数组的结尾存到Xend、Yend中 ，这两个都是指针，不是真实地址，要二次取指
+    mov eax,Xarr
+    mov ebx,[lenX]
+    dec ebx ;注意，队尾是begin+4*(len-1)
+    shl ebx,2 ;左移两位，*4
+    add eax,ebx
+    mov [Xend],eax ;此时Xend指向arrX的队尾
+
+    mov eax,Yarr
+    mov ebx,[lenY]
+    dec ebx ;注意，队尾是begin+4*(len-1)
+    shl ebx,2 ;左移两位，*4
+    add eax,ebx
+    mov [Yend],eax ;此时Yend指向arrY的队尾
+   
+;debug
+    ;mov ecx,[Xend]
+    ;mov eax,[ecx]
+    ;mov [num],eax
+    ;mov ecx,'0'
+    ;add ecx,[num]
+    ;mov [num],ecx
+    ;mov eax,4
+    ;mov ecx,num
+    ;mov ebx,1
+    ;mov edx,4
+    ;int 80h
+
+;***** 2.将两数相加
+
+;初始化变量   
+    mov eax,resultArr
+    mov [arrPointer],eax
+    mov dword[i],0
+traverseAdd:  ;循环完这个后resultArr是倒叙
+    mov ebx,[lenX]
+    sub ebx,[i]
+    cmp ebx,0
+    jle resolveX
+
+    mov ebx,[Xend]
+    mov eax,[i]
+    shl eax,2 ;*4
+    sub ebx,eax  ;此时ebx中存放Xarr当前位的值
+
+resolveXback:
+    mov ecx,[lenY]
+    sub ecx,[i]
+    cmp ecx,0
+    jle resolveY
+
+    mov ecx,[Yend]
+    mov eax,[i]
+    shl eax,2 ;*4
+    sub ecx,eax ;此时ebx中存放Yarr当前位的值
+resolveYback:
+    mov edx,[ebx]
+    add edx,[ecx] ;此时已经相加完一位
+    mov eax,[arrPointer]
+    mov [eax],edx
+    add eax,4 
+    mov [arrPointer],eax
+
+    mov ebx,[i]
+    inc ebx
+    mov [i],ebx
+
+    jmp traverseAdd
+    
+endTraverse:
+    ;计算结果的长度
+    mov eax,[i]
+    mov [lenR],eax 
+
+    mov eax,[lenR]
+    inc eax
+    mov [lenR],eax ;将lenR再加1,99+9的时候会出现位数不够
+    
+
+;(debug)
+    ;mov eax,[lenR]
+    ;mov [length],eax
+    ;mov eax,resultArr
+    ;mov [arrPointer],eax
+    ;call printArr
+;---------------------------------------------------------------
+
+;******************************************************step3 处理进位
+;处理进位-------------------------------------------
+    mov eax,[lenR]
+    mov dword[length],eax
+    mov eax,resultArr
+    mov [arrPointer],eax ;此时arrayPointer指向的是结果数组的起始位置
+    mov dword[i],0
+solveCarry:
+    mov eax,[i]
+    mov ebx,[length]
+    cmp eax,ebx
+    jge endSolveCarry ;i>=length，则跳出循环
+    mov ebx,[arrPointer] ;ebx存的是result数组此时的指针
+    mov ecx,[ebx] ;ecx存的是数组里该位的值
+    mov edx,[ret]
+    cmp edx,1
+    je addOne ;如果有进位，则该位加1   
+returnAdd:
+    cmp ecx,9
+    jg addCarry
+returnCarry:
+    mov eax,[i]
+    inc eax
+    mov [i],eax 
+    mov eax,[arrPointer]
+    add eax,4
+    mov [arrPointer],eax
+    jmp solveCarry
+
+endSolveCarry:
+;(debug)
+    ;mov eax,[lenR]
+    ;mov [length],eax
+    ;mov eax,resultArr
+    ;mov [arrPointer],eax
+    ;call printArr
+
+
+;--------------------------------------------------------
+;******************************************************** step 4: 将结果数组翻转过来，并去除前导0
+
+;翻转
+    mov eax,resultArr
+    mov ebx,[lenR]
+    mov [length],ebx
+    mov ebx,result
+    mov [round],ebx
+    call turnAround
+
+
+;(debug)
+    ;mov eax,[lenR]
+    ;mov [length],eax
+    ;mov eax,result
+    ;mov [arrPointer],eax
+    ;call printArr
+
+;去除前导0
+
+    mov dword[i],0
+    mov eax,result
+    mov [arrPointer],eax
+
+    mov eax,[lenR]
+    mov [num],eax
+
+loopZeroInAdd:
+    mov eax,[num]
+    mov ebx,[i]
+    sub eax,ebx
+    cmp eax,1
+    jle continuePrintAdd ;当只剩一位时要跳出
+
+    mov eax,[arrPointer]
+    mov ebx,[eax]
+    cmp ebx,0
+    jne continuePrintMul;如果没有前导,跳出
+
+  
+
+    mov eax,[arrPointer]
+    add eax,4
+    mov [arrPointer],eax
+
+    mov eax,[i]
+    inc eax
+    mov [i],eax
+
+    mov eax,[lenR]
+    dec eax
+    mov [lenR],eax
+
+    jmp loopZeroInAdd
+continuePrintAdd:
+
+;注意！ 移动的是arrPointer，不是result，result指代的地址是不会变的
+;最终输出
+    mov eax,[lenR]
+    mov [length],eax
+    call printArr
+    call printEnter
+    jmp input
+
+;-------------------------------------------------------
+
+;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ add的part结束
+
+;******************************************************** 乘法部分
+MultiPart:
+
+;*************************************************step2 翻转两个字符串 翻转后的数组分别放在Xback和Yback中了
+    ;先翻转两个数组
+    ;翻转字符串前的准备工作
+    ;存入字符串的长度
+    mov eax,[lenX]
+    mov dword[length],eax
+    ;存入数组头
+    mov eax,Xarr
+    ;将空地的首地址存到round这块内存中（round是指针）
+    mov edx,Xback
+    mov [round],edx
+    ;函数调用
+    call turnAround
+
+    mov eax,[lenY]
+    mov dword[length],eax
+    ;存入数组头
+    mov eax,Yarr
+    ;将空地的首地址存到round这块内存中（round是指针）
+    mov edx,Yback
+    mov [round],edx
+    ;函数调用
+    call turnAround
+
+
+;############debug
+    ;print  length of Yarr
+    ;mov eax,[lenX]
+    ;mov [length],eax
+    ;mov eax,Yback
+    ;mov [arrPointer],eax
+    ;call printArr
+
+
+;------------------------------------------------------------------------
+;*******************************************step3: 两个嵌套循环（模拟手算，X与Y的每一位相乘载相加）
+;先初始一下结果数组（最多为lenX+lenY位）
+    mov eax,[lenX]
+    add eax,[lenY]
+    mov [lenR],eax 
+
+    mov dword[i],0 ; 指向计算Y的哪一位,也用来看resultArr从哪一位开始相加
+    mov dword[j],0 ; 指向计算Y的哪一位
+
+;把两个数组的结尾存到Xend、Yend中 ，这两个都是指针，不是真实地址，要二次取指
+    mov eax,Xarr
+    mov ebx,[lenX]
+    dec ebx ;注意，队尾是begin+4*(len-1)
+    shl ebx,2 ;左移两位，*4
+    add eax,ebx
+    mov [Xend],eax ;此时Xend指向arrX的队尾
+
+    mov eax,Yarr
+    mov ebx,[lenY]
+    dec ebx ;注意，队尾是begin+4*(len-1)
+    shl ebx,2 ;左移两位，*4
+    add eax,ebx
+    mov [Yend],eax ;此时Yend指向arrY的队尾
+    
+
+loop1:
+    mov eax,[i]
+    cmp eax,[lenY]
+    jge endLoop1
+    ;把此时的各位数拿出来，放在num中
+    mov ebx,[i]
+    shl ebx,2 ;偏移量乘4
+    mov eax,[Yend]
+    sub eax,ebx  ;此时eax中的地址为Y的该位的地址
+    mov ebx,[eax]
+    mov [num],ebx ;解放ebx，将单位数存在num中
+    mov dword[j],0 ; 指向计算Y的哪一位
+    
+  loop2:  ;mul:    al<-al*dl  （X的位是正着算的）
+
+        mov eax,[j]
+        cmp eax,[lenX]
+        jge endLoop2
+
+        ;把X中的该位找出来
+        mov eax,[Xend]
+        mov ebx,[j]
+        shl ebx,2
+        sub eax,ebx ;此时eax中存放的是X中该位的地址  找X中位置的过程也是倒序
+
+        mov edx,0 ;清寄存器
+        mov edx,[eax]
+        mov eax,0 ;清寄存器
+        mov eax,[num] ;存放在al中（mul要用）
+        mul dl ;此时结果放在al中（即eax的低8位）
+;加到[resultArr+4*i+4*j]中
+        mov ecx,resultArr
+        mov ebx,[i]
+        shl ebx,2
+        add ecx,ebx
+        mov ebx,[j]
+        shl ebx,2
+        add ecx,ebx
+        mov ebx,[ecx] ;ebx为此时resultArr中的值
+
+        add ebx,eax ;eax为这一步要乘进去的值
+
+        mov [ecx],ebx 
+
+        mov eax,[j]
+        inc eax
+        mov [j],eax
+        jmp loop2
+  endLoop2:
+
+    mov eax,[i]
+    inc eax
+    mov [i],eax
+    jmp loop1
+endLoop1:
+
+
+;debug
+
+
+    ;mov eax,[lenR]
+    ;mov [length],eax
+    ;mov eax,resultArr
+    ;mov [arrPointer],eax
+    ;call printArr
+
+
+;------------------------------------------------------------
+
+;*********************************************************** 处理进位
+
+    mov eax,[lenR]
+    mov dword[length],eax
+    mov eax,resultArr
+    mov [arrPointer],eax ;此时arrayPointer指向的是结果数组的起始位置
+    mov dword[i],0
+solveCarryMul:
+    mov eax,[i]
+    mov ebx,[length]
+    cmp eax,ebx
+    jge endSolveCarryMul ;i>=length，则跳出循环
+    mov ebx,[arrPointer] ;ebx存的是result数组此时的指针
+    mov ecx,[ebx] ;ecx存的是数组里该位的值
+    mov edx,[ret]
+    cmp edx,1
+    jge addNum ;如果有进位 
+returnAddMul:
+    jmp   solveCarryInMul ;处理进位
+returnCarryMul:
+    mov eax,[i]
+    inc eax
+    mov [i],eax 
+    mov eax,[arrPointer]
+    add eax,4
+    mov [arrPointer],eax
+    jmp solveCarryMul
+
+endSolveCarryMul:
+;(debug)
+    mov eax,[lenR]
+    mov [length],eax
+    mov eax,resultArr
+    mov [arrPointer],eax
+    ;call printArr
+
+
+;--------------------------------------------------------
+;******************************************************** step 4: 将结果数组翻转过来，并去除前导0
+;翻转
+    mov eax,resultArr
+    mov ebx,[lenR]
+    mov [length],ebx
+    mov ebx,result
+    mov [round],ebx
+    call turnAround
+
+
+;(debug)
+    ;mov eax,[lenR]
+    ;mov [length],eax
+    ;mov eax,result
+    ;mov [arrPointer],eax
+    ;call printArr
+
+;输出（去除前导零）--注意结果为0的情况
+    mov dword[i],0
+    mov eax,result
+    mov [arrPointer],eax
+
+    mov eax,[lenR]
+    mov [num],eax
+
+loopZero:
+    mov eax,[num]
+    mov ebx,[i]
+    sub eax,ebx
+    cmp eax,1
+    jle continuePrintMul ;当只剩一位时要跳出
+
+    mov eax,[arrPointer]
+    mov ebx,[eax]
+    cmp ebx,0
+    jne continuePrintMul;如果没有前导,跳出
+
+  
+
+    mov eax,[arrPointer]
+    add eax,4
+    mov [arrPointer],eax
+
+    mov eax,[i]
+    inc eax
+    mov [i],eax
+
+    mov eax,[lenR]
+    dec eax
+    mov [lenR],eax
+
+    jmp loopZero
+continuePrintMul:
+
+;注意！ 移动的是arrPointer，不是result，result指代的地址是不会变的
+;最终输出
+    mov eax,[lenR]
+    mov [length],eax
+    call printArr
+    call printEnter
+    jmp input
+;------------------------------------------------------------------
+
+
+
+end:
+    mov     ebx, 0
+    mov     eax, 1
+    int     80h
