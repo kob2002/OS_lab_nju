@@ -1,0 +1,3 @@
+D:/Work/OS/实验/lab2/ReadImgTool/cmake-build-debug/CMakeFiles/ReadImgTool.dir
+D:/Work/OS/实验/lab2/ReadImgTool/cmake-build-debug/CMakeFiles/edit_cache.dir
+D:/Work/OS/实验/lab2/ReadImgTool/cmake-build-debug/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,6 @@
+# ninja log v5
+4	2546	6893420859303808	CMakeFiles/ReadImgTool.dir/main.cpp.obj	317ae7ba1b437c81
+2547	3806	6893420871687656	ReadImgTool.exe	775a90925ec3052f
+3	1235	6892302051916750	CMakeFiles/ReadImgTool.dir/Tool/Tool.cpp.obj	9efbfbc6567e895b
+0	725	6893424609692846	build.ninja	eb95a19c428107c1
+227	1580	6892311721578750	CMakeFiles/ReadImgTool.dir/Tool.cpp.obj	8138fb885b500913
