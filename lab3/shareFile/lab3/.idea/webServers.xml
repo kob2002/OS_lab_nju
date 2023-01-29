@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="844dc85c-e388-4c32-a35f-2a3e00ca5d0d" name="kongbo">
+        <fileTransfer accessType="SFTP" host="192.168.40.132" port="22" sshConfigId="f950984e-9614-4ac2-9d11-fa90f3e1c8f1" sshConfig="nasmenv@192.168.40.132:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
